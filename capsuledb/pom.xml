@@ -1,0 +1,21 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+   <parent>
+    <groupId>site.ycsb</groupId>
+    <artifactId>binding-parent</artifactId>
+    <version>0.18.0-SNAPSHOT</version>
+    <relativePath>../binding-parent</relativePath>
+  </parent>
+
+  <artifactId>capsuledb-binding</artifactId>
+  <name>CapsuleDB Binding</name>
+  <packaging>jar</packaging>
+  <dependencies>
+      <dependency>
+      <groupId>site.ycsb</groupId>
+      <artifactId>core</artifactId>
+      <version>${project.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+</project>
