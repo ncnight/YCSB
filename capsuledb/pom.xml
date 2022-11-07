@@ -11,7 +11,7 @@
   <name>CapsuleDB Binding</name>
   <packaging>jar</packaging>
   <dependencies>
-      <dependency>
+    <dependency>
       <groupId>site.ycsb</groupId>
       <artifactId>core</artifactId>
       <version>${project.version}</version>

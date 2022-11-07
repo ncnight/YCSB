@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # Copyright (c) 2012 - 2020 YCSB contributors. All rights reserved.
 #
@@ -60,6 +60,7 @@ DATABASES = {
     "azuretablestorage" : "site.ycsb.db.azuretablestorage.AzureClient",
     "basic"        : "site.ycsb.BasicDB",
     "basicts"      : "site.ycsb.BasicTSDB",
+    "capsuledb"     : "site.ycsb.db.CapsuleDBClient",
     "cassandra-cql": "site.ycsb.db.CassandraCQLClient",
     "cassandra2-cql": "site.ycsb.db.CassandraCQLClient",
     "cloudspanner" : "site.ycsb.db.cloudspanner.CloudSpannerClient",

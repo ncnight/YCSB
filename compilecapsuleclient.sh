@@ -1,2 +1,2 @@
 #!/bin/bash
-mvn -pl site.ycsb:mongodb-binding -am clean package
+mvn -pl site.ycsb:capsuledb-binding -am clean package
