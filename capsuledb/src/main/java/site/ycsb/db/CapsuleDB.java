@@ -23,7 +23,10 @@ public class CapsuleDB {
 
   public void init(String capsuledbBinary, String capsuledbSig, String config) throws IOException {
     System.out.println("Booting up CapsuleDB...");
-    ProcessBuilder dbBuilder = new ProcessBuilder(capsuledbBinary, capsuledbSig, config);
+    ProcessBuilder dbBuilder = new ProcessBuilder(
+        "/home/gdpmobile7/CapsuleDB-nithin/towncrier/bin/go_echo_client", 
+        "client", "cdb", "127.0.0.1:2502"); 
+    //new ProcessBuilder(capsuledbBinary, capsuledbSig, config);
     dbBuilder.redirectError(new File("capsuleDB.err"));
     dbProcess = dbBuilder.start();
     InputStream rawDbOutput = dbProcess.getInputStream();
