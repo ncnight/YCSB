@@ -5,6 +5,7 @@ import site.ycsb.DB;
 import site.ycsb.DBException;
 import site.ycsb.Status;
 import site.ycsb.ByteArrayByteIterator;
+import site.ycsb.StringByteIterator;
 
 import java.util.Vector;
 import java.io.IOException;
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
+// import java.util.StringBuilder;
 
 /**
  * Client to access CapsuleDB. NOTE: The table name is not used in any methods. ./bin/ycsb load
@@ -25,11 +27,11 @@ public class CapsuleDBClient extends DB {
 
   private static CapsuleDB capsuledb;
 
-  private static final String CAPSULEDB_BINARY = "/home/gdpmobile7/CapsuleDB-nithin/YCSB/capsuledb/bin/cdbhost";
+  private static final String CAPSULEDB_BINARY = "/home/azureuser/YCSB/capsuledb/bin/cdbhos";
 
-  private static final String CAPSULEDB_SIG = "/home/gdpmobile7/CapsuleDB-nithin/YCSB/capsuledb/bin/cdbenc.signed";
+  private static final String CAPSULEDB_SIG = "/home/azureuser/YCSB/capsuledb/bin/cdbenc.signed";
 
-  private static final String CONFIG_F = "/home/gdpmobile7/CapsuleDB-nithin/YCSB/capsuledb/bin/test_config.ini";
+  private static final String CONFIG_F = "/home/azureuser/YCSB/capsuledb/bin/test_config.ini";
 
   private static final char FIELD_DELIM = '|';
 
@@ -62,11 +64,12 @@ public class CapsuleDBClient extends DB {
 
   @Override
   public void cleanup() {
+    System.out.println("cleanup: try");
     synchronized (CapsuleDBClient.capsuledb) {
       try {
         CapsuleDBClient.capsuledb.close();
       } catch (IOException e) {
-        System.err.println("Error closing CapsuleDB.");
+        System.err.println("cleanup: Error closing CapsuleDB.");
         e.printStackTrace();
       }
     }
@@ -87,6 +90,8 @@ public class CapsuleDBClient extends DB {
     try {
       fieldsBytes = CapsuleDBClient.capsuledb.read(key);
       if (fieldsBytes == null) {
+        System.out.println("Read NotFound");
+        System.out.println(key);
         return Status.NOT_FOUND;
       }
     } catch (IOException e) {
@@ -136,6 +141,7 @@ public class CapsuleDBClient extends DB {
         if (readFieldStatus != Status.OK) {
           return readFieldStatus;
         }
+        // fields.add("field0");
       }
       String readKey = null;
       ArrayList<Byte> outputBuf = null;
@@ -171,22 +177,52 @@ public class CapsuleDBClient extends DB {
   @Override
   public Status update(String table, String key, Map<String, ByteIterator> values) {
     synchronized (CapsuleDBClient.capsuledb) {
+      ArrayList<Byte> fieldVals = null;
+      try{
+        fieldVals = CapsuleDBClient.capsuledb.read(key);
+      }catch (IOException e){
+        return Status.ERROR;
+      }
+      HashSet<String> fieldSet = new HashSet<>();
+      if (fieldVals != null){
+        StringBuilder buff = new StringBuilder(100);
+        for (Byte b: fieldVals){
+          char c = (char)b.byteValue();
+          if (c == '|'){
+            fieldSet.add(buff.toString());
+            buff = new StringBuilder(100);
+          }else{
+            buff.append(c);
+          }
+        }
+  
+        if (buff.length() > 0){
+          fieldSet.add(buff.toString());
+        }
+      }
+
+      for (String fieldName : values.keySet()){
+        fieldSet.add(fieldName);
+      }
+      StringBuilder fieldsStr = new StringBuilder(101 * fieldSet.size());
+      for (String field: fieldSet){
+        fieldsStr.append(field);
+        fieldsStr.append("|");
+      }
+      ByteIterator bitr = new StringByteIterator(fieldsStr.toString());
+      try {
+        CapsuleDBClient.capsuledb.write(key, bitr);
+      } catch (IOException e) {
+        return Status.ERROR;
+      }
+
+
       String writeKey = null;
       for (String fieldName : values.keySet()) {
         writeKey = key + ":" + fieldName;
         try {
           CapsuleDBClient.capsuledb.write(writeKey, values.get(fieldName));
         } catch (IOException e) {
-          return Status.ERROR;
-        }
-        Set<String> currentFields = new HashSet<String>();
-        if (this.readFields(key, currentFields) != Status.OK) {
-          return Status.ERROR;
-        }
-        for (String k : values.keySet()) {
-          currentFields.add(k);
-        }
-        if (this.dumpFields(key, currentFields) != Status.OK) {
           return Status.ERROR;
         }
       }
@@ -198,20 +234,8 @@ public class CapsuleDBClient extends DB {
   @Override
   public Status insert(String table, String key, Map<String, ByteIterator> values) {
     synchronized (CapsuleDBClient.capsuledb) {
-      String writeKey = null;
-      for (String fieldName : values.keySet()) {
-        writeKey = key + ":" + fieldName;
-        try {
-          CapsuleDBClient.capsuledb.write(writeKey, values.get(fieldName));
-        } catch (IOException e) {
-          return Status.ERROR;
-        }
-        if (this.dumpFields(key, values.keySet()) != Status.OK) {
-          return Status.ERROR;
-        }
-      }
+      return update(table, key, values);
     }
-    return Status.OK;
   }
 
   // Delete a single record

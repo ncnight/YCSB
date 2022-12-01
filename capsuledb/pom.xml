@@ -6,7 +6,12 @@
     <version>0.18.0-SNAPSHOT</version>
     <relativePath>../binding-parent</relativePath>
   </parent>
-
+  <repositories>
+    <repository>
+        <id>local-maven-repo</id>
+        <url>file:///${project.basedir}/local-maven-repo</url>
+    </repository>
+  </repositories>
   <artifactId>capsuledb-binding</artifactId>
   <name>CapsuleDB Binding</name>
   <packaging>jar</packaging>
@@ -16,6 +21,21 @@
       <artifactId>core</artifactId>
       <version>${project.version}</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>edu.berkeley.eecs.gdp</groupId>
+      <artifactId>cdb-client</artifactId>
+      <version>0.1</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <version>3.21.7</version>
+    </dependency>
+    <dependency>  
+      <groupId>org.javatuples</groupId>  
+      <artifactId>javatuples</artifactId>  
+      <version>1.2</version>  
     </dependency>
   </dependencies>
 </project>
