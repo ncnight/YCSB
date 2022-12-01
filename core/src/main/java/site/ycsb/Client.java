@@ -160,9 +160,11 @@ public final class Client {
    * All keys for configuring the tracing system start with this prefix.
    */
   private static final String HTRACE_KEY_PREFIX = "htrace.";
+  private static final String CLIENT_ORIGINAL_INIT_SPAN = "Client#initial_init";
   private static final String CLIENT_WORKLOAD_INIT_SPAN = "Client#workload_init";
   private static final String CLIENT_INIT_SPAN = "Client#init";
   private static final String CLIENT_WORKLOAD_SPAN = "Client#workload";
+  private static final String CLIENT_FORCED_RUN_WORKLOAD_SPAN = "Clieant#workload_run";
   private static final String CLIENT_CLEANUP_SPAN = "Client#cleanup";
   private static final String CLIENT_EXPORT_MEASUREMENTS_SPAN = "Client#export_measurements";
 
@@ -273,6 +275,37 @@ public final class Client {
     }
   }
 
+  private static Map<Thread, ClientThread> wrapClients(List<ClientThread> clients, Tracer tracer) {
+    final Map<Thread, ClientThread> threads = new HashMap<>(clients.size());
+    for (ClientThread client : clients) {
+      threads.put(new Thread(tracer.wrap(client, "ClientThread")), client);
+    }
+    return threads;
+  }
+
+  private static int joinClients(Map<Thread, ClientThread> threads) {
+    int opsDone = 0;
+    for (Map.Entry<Thread, ClientThread> entry : threads.entrySet()) {
+      try {
+        entry.getKey().join();
+        opsDone += entry.getValue().getOpsDone();
+      } catch (InterruptedException ignored) {
+        // ignored
+      }
+    }
+    return opsDone;
+  }
+
+  private static TerminatorThread createTerminatorThread(Map<Thread, ClientThread> threads, 
+                                                        long maxExecutionTime, Workload workload) {
+    TerminatorThread terminator = null;
+    if (maxExecutionTime > 0) {
+      terminator = new TerminatorThread(maxExecutionTime, threads.keySet(), workload);
+      terminator.start();
+    }
+    return terminator;
+  }
+
   @SuppressWarnings("unchecked")
   public static void main(String[] args) {
     Properties props = parseArguments(args);
@@ -306,10 +339,30 @@ public final class Client {
     initWorkload(props, warningthread, workload, tracer);
 
     System.err.println("Starting test.");
-    final CountDownLatch completeLatch = new CountDownLatch(threadcount);
+    // 2x threads, one set for load one for run
+    final CountDownLatch completeLatch = new CountDownLatch(threadcount * 2);
+
+    // core ref that ensures db isnt destroyed
+    DB dbCoreRef = null;
+    try(final TraceScope originalInitSpan = tracer.newScope(CLIENT_ORIGINAL_INIT_SPAN)) {
+      try {
+        dbCoreRef = DBFactory.newDB(dbname, props, tracer);
+      } catch (UnknownDBException e) {
+        System.out.println("Failed in original init ref. Unknown DB " + dbname);
+        System.exit(-1);
+      }
+    }
 
     final List<ClientThread> clients = initDb(dbname, props, threadcount, targetperthreadperms,
         workload, tracer, completeLatch);
+    
+    // Gen new threads to run txns
+    props.setProperty(DO_TRANSACTIONS_PROPERTY, String.valueOf(true));
+    final List<ClientThread> txnClients = initDb(dbname, props, threadcount, targetperthreadperms, 
+        workload, tracer, completeLatch);
+    final List<ClientThread> allClients = new ArrayList<>(threadcount * 2);
+    allClients.addAll(clients);
+    allClients.addAll(txnClients);
 
     if (status) {
       boolean standardstatus = false;
@@ -319,7 +372,8 @@ public final class Client {
       int statusIntervalSeconds = Integer.parseInt(props.getProperty("status.interval", "10"));
       boolean trackJVMStats = props.getProperty(Measurements.MEASUREMENT_TRACK_JVM_PROPERTY,
           Measurements.MEASUREMENT_TRACK_JVM_PROPERTY_DEFAULT).equals("true");
-      statusthread = new StatusThread(completeLatch, clients, label, standardstatus, statusIntervalSeconds,
+      // add new clients to status thread
+      statusthread = new StatusThread(completeLatch, allClients, label, standardstatus, statusIntervalSeconds,
           trackJVMStats);
       statusthread.start();
     }
@@ -330,39 +384,41 @@ public final class Client {
     int opsDone;
 
     try (final TraceScope span = tracer.newScope(CLIENT_WORKLOAD_SPAN)) {
-
-      final Map<Thread, ClientThread> threads = new HashMap<>(threadcount);
-      for (ClientThread client : clients) {
-        threads.put(new Thread(tracer.wrap(client, "ClientThread")), client);
-      }
-
+      final Map<Thread, ClientThread> threads = wrapClients(clients, tracer);
+      final Map<Thread, ClientThread> txnThreads = wrapClients(txnClients, tracer); 
       st = System.currentTimeMillis();
 
       for (Thread t : threads.keySet()) {
         t.start();
       }
+      
+      terminator = createTerminatorThread(threads, maxExecutionTime, workload);
 
-      if (maxExecutionTime > 0) {
-        terminator = new TerminatorThread(maxExecutionTime, threads.keySet(), workload);
-        terminator.start();
+      opsDone = joinClients(threads);
+
+      // Load finished. Run txns
+      for (Thread t : txnThreads.keySet()) {
+        t.start();
       }
 
-      opsDone = 0;
+      terminator = createTerminatorThread(txnThreads, maxExecutionTime, workload);
 
-      for (Map.Entry<Thread, ClientThread> entry : threads.entrySet()) {
-        try {
-          entry.getKey().join();
-          opsDone += entry.getValue().getOpsDone();
-        } catch (InterruptedException ignored) {
-          // ignored
-        }
-      }
+      opsDone += joinClients(txnThreads);
 
       en = System.currentTimeMillis();
     }
 
     try {
       try (final TraceScope span = tracer.newScope(CLIENT_CLEANUP_SPAN)) {
+
+        // We need to cleanup the core reference to a DB Client
+        if (dbCoreRef != null) {
+          try {
+            dbCoreRef.cleanup();
+          } catch (DBException e) {
+            System.err.println("Unable to close core db ref.");
+          }
+        }
 
         if (terminator != null && !terminator.isInterrupted()) {
           terminator.interrupt();
