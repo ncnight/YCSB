@@ -347,7 +347,8 @@ public final class Client {
     try(final TraceScope originalInitSpan = tracer.newScope(CLIENT_ORIGINAL_INIT_SPAN)) {
       try {
         dbCoreRef = DBFactory.newDB(dbname, props, tracer);
-      } catch (UnknownDBException e) {
+        dbCoreRef.init();
+      } catch (Exception e) {
         System.out.println("Failed in original init ref. Unknown DB " + dbname);
         System.exit(-1);
       }
