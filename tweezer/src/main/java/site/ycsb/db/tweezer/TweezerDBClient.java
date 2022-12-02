@@ -353,7 +353,6 @@ public class TweezerDBClient extends DB {
       final int keyLen = buf.getInt();
       buf.clear();
       offset += 4;
-      System.out.println("offset: " + offset + "keylen: " + keyLen);
       final String key = new String(values, offset, keyLen);
       offset += keyLen;
 

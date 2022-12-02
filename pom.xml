@@ -192,6 +192,7 @@ LICENSE file.
     <module>orientdb</module>
     <module>postgrenosql</module>
     <module>tweezer</module>
+    <module>speicher</module>
     <module>rados</module>
     <module>redis</module>
     <module>rest</module>
