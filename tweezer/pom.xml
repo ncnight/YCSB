@@ -34,7 +34,7 @@ LICENSE file.
       <groupId>org.rocksdb</groupId>
       <artifactId>rocksdbjni</artifactId>
       <scope>system</scope>
-      <systemPath>/home/gdpmobile7/CapsuleDB-nithin/YCSB/tweezer/tweezer-jar/rocksdbjni-6.14.0-linux64.jar</systemPath>
+      <systemPath>/root/tweezer/Docker/speicher_V1/java/target/rocksdbjni-6.14.0-linux64.jar</systemPath>
       <version>6.14.0</version>
     </dependency>
     <dependency>

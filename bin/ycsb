@@ -92,7 +92,7 @@ DATABASES = {
     "nosqldb"      : "site.ycsb.db.NoSqlDbClient",
     "orientdb"     : "site.ycsb.db.OrientDBClient",
     "postgrenosql" : "site.ycsb.postgrenosql.PostgreNoSQLDBClient",
-    'tweezer'       : "site.ycsb.db.tweezer.TweezerDBClient",
+    'tweezer'      : "site.ycsb.db.tweezer.TweezerDBClient",
     "rados"        : "site.ycsb.db.RadosClient",
     "redis"        : "site.ycsb.db.RedisClient",
     "rest"         : "site.ycsb.webservice.rest.RestClient",
