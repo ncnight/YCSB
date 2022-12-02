@@ -18,5 +18,5 @@
 /**
  * The RocksDB Java binding for <a href="http://rocksdb.org/">RocksDB</a>.
  */
-package site.ycsb.db.rocksdb;
+package site.ycsb.db.speicher;
 

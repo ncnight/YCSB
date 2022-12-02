@@ -39,8 +39,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  */
 public class TweezerDBClient extends DB {
 
-  static final String PROPERTY_ROCKSDB_DIR = "rocksdb.dir";
-  static final String PROPERTY_ROCKSDB_OPTIONS_FILE = "rocksdb.optionsfile";
+  static final String PROPERTY_ROCKSDB_DIR = "tweezer.dir";
+  static final String PROPERTY_ROCKSDB_OPTIONS_FILE = "tweezer.optionsfile";
   private static final String COLUMN_FAMILY_NAMES_FILENAME = "CF_NAMES";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TweezerDBClient.class);
