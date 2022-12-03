@@ -22,8 +22,8 @@ import java.util.Map;
  * 
  */
 public class CapsuleDBClient extends DB {
-  // public class CapsuledbClient {
-  private static final Object INIT_COORDINATOR = new Object();
+
+  private static int references = 0;
 
   private static CapsuleDB capsuledb;
 
@@ -37,15 +37,7 @@ public class CapsuleDBClient extends DB {
 
   @Override
   public void init() throws DBException {
-    // public void init() {
-    System.out.println("Got to init client");
-    // Quick check to see if we need to make a new instance
-    if (capsuledb != null) {
-      return;
-    }
-
-    synchronized (INIT_COORDINATOR) {
-      // Synchronized null check
+    synchronized (CapsuleDBClient.class) {
       if (capsuledb != null) {
         return;
       }
@@ -57,21 +49,23 @@ public class CapsuleDBClient extends DB {
         e.printStackTrace();
         System.exit(-1);
       }
-      System.out.println("Loaded DB!");
-
+      references++;
     }
   }
 
   @Override
   public void cleanup() {
     System.out.println("cleanup: try");
-    synchronized (CapsuleDBClient.capsuledb) {
-      try {
-        CapsuleDBClient.capsuledb.close();
-      } catch (IOException e) {
-        System.err.println("cleanup: Error closing CapsuleDB.");
-        e.printStackTrace();
+    synchronized (CapsuleDBClient.class) {
+      if (references == 1) {
+        try {
+          CapsuleDBClient.capsuledb.close();
+        } catch (IOException e) {
+          System.err.println("cleanup: Error closing CapsuleDB.");
+          e.printStackTrace();
+        }
       }
+      references--;
     }
   }
 
@@ -132,7 +126,7 @@ public class CapsuleDBClient extends DB {
   // Read a single record
   @Override
   public Status read(String table, String key, Set<String> providedfields, Map<String, ByteIterator> result) {
-    synchronized (CapsuleDBClient.capsuledb) {
+    synchronized (CapsuleDBClient.class) {
       // Check if we have fields, otherwise read in field
       Set<String> fields = providedfields;
       if (fields == null || fields.size() == 0) {
@@ -176,7 +170,7 @@ public class CapsuleDBClient extends DB {
   // Update a single record
   @Override
   public Status update(String table, String key, Map<String, ByteIterator> values) {
-    synchronized (CapsuleDBClient.capsuledb) {
+    synchronized (CapsuleDBClient.class) {
       ArrayList<Byte> fieldVals = null;
       try{
         fieldVals = CapsuleDBClient.capsuledb.read(key);
@@ -216,7 +210,6 @@ public class CapsuleDBClient extends DB {
         return Status.ERROR;
       }
 
-
       String writeKey = null;
       for (String fieldName : values.keySet()) {
         writeKey = key + ":" + fieldName;
@@ -233,8 +226,35 @@ public class CapsuleDBClient extends DB {
   // Insert a single record
   @Override
   public Status insert(String table, String key, Map<String, ByteIterator> values) {
-    synchronized (CapsuleDBClient.capsuledb) {
-      return update(table, key, values);
+    synchronized (CapsuleDBClient.class) {
+      // First write fields
+      HashSet<String> fieldSet = new HashSet<>();
+      for (String fieldName : values.keySet()){
+        fieldSet.add(fieldName);
+      }
+      StringBuilder fieldsStr = new StringBuilder(101 * fieldSet.size());
+      for (String field: fieldSet){
+        fieldsStr.append(field);
+        fieldsStr.append("|");
+      }
+      ByteIterator bitr = new StringByteIterator(fieldsStr.toString());
+      try {
+        CapsuleDBClient.capsuledb.write(key, bitr);
+      } catch (IOException e) {
+        return Status.ERROR;
+      }
+
+
+      String writeKey = null;
+      for (String fieldName : values.keySet()) {
+        writeKey = key + ":" + fieldName;
+        try {
+          CapsuleDBClient.capsuledb.write(writeKey, values.get(fieldName));
+        } catch (IOException e) {
+          return Status.ERROR;
+        }
+      }
+      return Status.OK;
     }
   }
 
