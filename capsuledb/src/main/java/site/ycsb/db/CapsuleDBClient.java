@@ -5,16 +5,17 @@ import site.ycsb.DB;
 import site.ycsb.DBException;
 import site.ycsb.Status;
 import site.ycsb.ByteArrayByteIterator;
-import site.ycsb.StringByteIterator;
 
 import java.util.Vector;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
-// import java.util.StringBuilder;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * Client to access CapsuleDB. NOTE: The table name is not used in any methods. ./bin/ycsb load
@@ -69,14 +70,66 @@ public class CapsuleDBClient extends DB {
     }
   }
 
-  private byte[] serialize(Map<String, ByteIterator> fields) {
-    // final ObjectMapper objectMapper = new ObjectMapper();
-    // final ObjectWriter objectWriter = objectMapper.writer();
-    return null;
+  private byte[] serializeValues(final Map<String, ByteIterator> values) throws IOException {
+    //Follow Rocksdb serialization scheme
+    try (final ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+      final ByteBuffer buf = ByteBuffer.allocate(4);
+
+      for (final Map.Entry<String, ByteIterator> value : values.entrySet()) {
+        final byte[] keyBytes = value.getKey().getBytes(UTF_8);
+        final byte[] valueBytes = value.getValue().toArray();
+
+        buf.putInt(keyBytes.length);
+        baos.write(buf.array());
+        baos.write(keyBytes);
+
+        buf.clear();
+
+        buf.putInt(valueBytes.length);
+        baos.write(buf.array());
+        baos.write(valueBytes);
+
+        buf.clear();
+      }
+      return baos.toByteArray();
+    }
   }
 
-  private void deserialize(byte[] rawData, Map<String, ByteIterator> result) {
-    return;
+  private Map<String, ByteIterator> deserializeValues(final ArrayList<Byte> valuesList, final Set<String> fields,
+      final Map<String, ByteIterator> result) {
+    
+    final byte[] values = new byte[valuesList.size()];
+    for (int i = 0; i < valuesList.size(); i++) {
+      values[i] = (byte) valuesList.get(i);
+    }
+
+    //Follow Rocksdb deserialization scheme
+    final ByteBuffer buf = ByteBuffer.allocate(4);
+
+    int offset = 0;
+    while (offset < values.length) {
+      buf.put(values, offset, 4);
+      buf.flip();
+      final int keyLen = buf.getInt();
+      buf.clear();
+      offset += 4;
+
+      final String key = new String(values, offset, keyLen);
+      offset += keyLen;
+
+      buf.put(values, offset, 4);
+      buf.flip();
+      final int valueLen = buf.getInt();
+      buf.clear();
+      offset += 4;
+
+      if (fields == null || fields.contains(key)) {
+        result.put(key, new ByteArrayByteIterator(values, offset, valueLen));
+      }
+
+      offset += valueLen;
+    }
+    return result;
   }
 
   private Status readFields(String key, Set<String> result) {
@@ -127,37 +180,20 @@ public class CapsuleDBClient extends DB {
   @Override
   public Status read(String table, String key, Set<String> providedfields, Map<String, ByteIterator> result) {
     synchronized (CapsuleDBClient.class) {
-      // Check if we have fields, otherwise read in field
-      Set<String> fields = providedfields;
-      if (fields == null || fields.size() == 0) {
-        fields = new HashSet<String>();
-        Status readFieldStatus = this.readFields(key, fields);
-        if (readFieldStatus != Status.OK) {
-          return readFieldStatus;
-        }
-        // fields.add("field0");
+      final ArrayList<Byte> readData;
+      try {
+        readData = CapsuleDBClient.capsuledb.read(key);
+      } catch (IOException e) {
+        return Status.ERROR;
       }
-      String readKey = null;
-      ArrayList<Byte> outputBuf = null;
-      byte[] outputBufRaw = null;
-      for (String fieldName : fields) {
-        readKey = key + ":" + fieldName;
-        try {
-          outputBuf = CapsuleDBClient.capsuledb.read(readKey);
-          if (outputBuf == null) {
-            return Status.NOT_FOUND;
-          }
-        } catch (IOException e) {
-          return Status.ERROR;
-        }
-        outputBufRaw = new byte[outputBuf.size()];
-        for (int i = 0; i < outputBuf.size(); i++) {
-          outputBufRaw[i] = outputBuf.get(i);
-        }
-        result.put(fieldName, new ByteArrayByteIterator(outputBufRaw));
+
+      if (readData == null) {
+        return Status.NOT_FOUND;
       }
+
+      deserializeValues(readData, providedfields, result);
+      return Status.OK;
     }
-    return Status.OK;
   }
 
   // Perform a range scan
@@ -171,88 +207,38 @@ public class CapsuleDBClient extends DB {
   @Override
   public Status update(String table, String key, Map<String, ByteIterator> values) {
     synchronized (CapsuleDBClient.class) {
-      ArrayList<Byte> fieldVals = null;
-      try{
-        fieldVals = CapsuleDBClient.capsuledb.read(key);
-      }catch (IOException e){
-        return Status.ERROR;
-      }
-      HashSet<String> fieldSet = new HashSet<>();
-      if (fieldVals != null){
-        StringBuilder buff = new StringBuilder(100);
-        for (Byte b: fieldVals){
-          char c = (char)b.byteValue();
-          if (c == '|'){
-            fieldSet.add(buff.toString());
-            buff = new StringBuilder(100);
-          }else{
-            buff.append(c);
-          }
-        }
-  
-        if (buff.length() > 0){
-          fieldSet.add(buff.toString());
-        }
-      }
-
-      for (String fieldName : values.keySet()){
-        fieldSet.add(fieldName);
-      }
-      StringBuilder fieldsStr = new StringBuilder(101 * fieldSet.size());
-      for (String field: fieldSet){
-        fieldsStr.append(field);
-        fieldsStr.append("|");
-      }
-      ByteIterator bitr = new StringByteIterator(fieldsStr.toString());
+      // Read existing data
+      final Map<String, ByteIterator> existingData = new HashMap<>();
+      final ArrayList<Byte> readResult;
       try {
-        CapsuleDBClient.capsuledb.write(key, bitr);
+        readResult = CapsuleDBClient.capsuledb.read(key);
       } catch (IOException e) {
         return Status.ERROR;
       }
+      deserializeValues(readResult, null, existingData);
 
-      String writeKey = null;
-      for (String fieldName : values.keySet()) {
-        writeKey = key + ":" + fieldName;
-        try {
-          CapsuleDBClient.capsuledb.write(writeKey, values.get(fieldName));
-        } catch (IOException e) {
-          return Status.ERROR;
-        }
+      // Add new updated values
+      existingData.putAll(values);
+
+      // Rewrite
+      try {
+        final ByteIterator serializedData = new ByteArrayByteIterator(serializeValues(existingData));
+        CapsuleDBClient.capsuledb.write(key, serializedData);
+      } catch (IOException e) {
+        return Status.ERROR;
       }
+      return Status.OK;
     }
-    return Status.OK;
   }
 
   // Insert a single record
   @Override
   public Status insert(String table, String key, Map<String, ByteIterator> values) {
     synchronized (CapsuleDBClient.class) {
-      // First write fields
-      HashSet<String> fieldSet = new HashSet<>();
-      for (String fieldName : values.keySet()){
-        fieldSet.add(fieldName);
-      }
-      StringBuilder fieldsStr = new StringBuilder(101 * fieldSet.size());
-      for (String field: fieldSet){
-        fieldsStr.append(field);
-        fieldsStr.append("|");
-      }
-      ByteIterator bitr = new StringByteIterator(fieldsStr.toString());
       try {
-        CapsuleDBClient.capsuledb.write(key, bitr);
+        CapsuleDBClient.capsuledb.write(key, new ByteArrayByteIterator(serializeValues(values)));
       } catch (IOException e) {
         return Status.ERROR;
-      }
-
-
-      String writeKey = null;
-      for (String fieldName : values.keySet()) {
-        writeKey = key + ":" + fieldName;
-        try {
-          CapsuleDBClient.capsuledb.write(writeKey, values.get(fieldName));
-        } catch (IOException e) {
-          return Status.ERROR;
-        }
       }
       return Status.OK;
     }
