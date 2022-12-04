@@ -8,14 +8,10 @@ import site.ycsb.ByteArrayByteIterator;
 
 import java.util.Vector;
 import java.io.IOException;
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.Map;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * Client to access CapsuleDB. NOTE: The table name is not used in any methods. ./bin/ycsb load
@@ -71,63 +67,44 @@ public class CapsuleDBClient extends DB {
   }
 
   private byte[] serializeValues(final Map<String, ByteIterator> values) throws IOException {
-    //Follow Rocksdb serialization scheme
-    try (final ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-      final ByteBuffer buf = ByteBuffer.allocate(4);
-
-      for (final Map.Entry<String, ByteIterator> value : values.entrySet()) {
-        final byte[] keyBytes = value.getKey().getBytes(UTF_8);
-        final byte[] valueBytes = value.getValue().toArray();
-
-        buf.putInt(keyBytes.length);
-        baos.write(buf.array());
-        baos.write(keyBytes);
-
-        buf.clear();
-
-        buf.putInt(valueBytes.length);
-        baos.write(buf.array());
-        baos.write(valueBytes);
-
-        buf.clear();
+    StringBuilder serializedValues = new StringBuilder();
+    for (final Map.Entry<String, ByteIterator> value : values.entrySet()) {
+      serializedValues.append(value.getKey());
+      serializedValues.append(CapsuleDBClient.FIELD_DELIM);
+      while (value.getValue().hasNext()) {
+        serializedValues.append((char) value.getValue().nextByte());
       }
-      return baos.toByteArray();
+      serializedValues.append(CapsuleDBClient.FIELD_DELIM);
     }
+    return serializedValues.toString().getBytes();
   }
 
   private Map<String, ByteIterator> deserializeValues(final ArrayList<Byte> valuesList, final Set<String> fields,
       final Map<String, ByteIterator> result) {
-    
-    final byte[] values = new byte[valuesList.size()];
+    String key;
+    StringBuilder sbuilder = new StringBuilder();
     for (int i = 0; i < valuesList.size(); i++) {
-      values[i] = (byte) valuesList.get(i);
-    }
-
-    //Follow Rocksdb deserialization scheme
-    final ByteBuffer buf = ByteBuffer.allocate(4);
-
-    int offset = 0;
-    while (offset < values.length) {
-      buf.put(values, offset, 4);
-      buf.flip();
-      final int keyLen = buf.getInt();
-      buf.clear();
-      offset += 4;
-
-      final String key = new String(values, offset, keyLen);
-      offset += keyLen;
-
-      buf.put(values, offset, 4);
-      buf.flip();
-      final int valueLen = buf.getInt();
-      buf.clear();
-      offset += 4;
+      sbuilder.setLength(0);
+      // Read key
+      while(((char) valuesList.get(i).byteValue()) != CapsuleDBClient.FIELD_DELIM && i < valuesList.size()) {
+        sbuilder.append(valuesList.get(i));
+        i++;
+      }
+      key = sbuilder.toString();
+      sbuilder.setLength(0);
+      // Read value
+      i++; // Last index was |
+      while (((char) valuesList.get(i).byteValue()) != CapsuleDBClient.FIELD_DELIM && i < valuesList.size()) {
+        sbuilder.append(valuesList.get(i));
+        i++;
+      }
+      i++; // Last index was |
 
       if (fields == null || fields.contains(key)) {
-        result.put(key, new ByteArrayByteIterator(values, offset, valueLen));
+        result.put(key, new ByteArrayByteIterator(sbuilder.toString().getBytes()));
+        i++;
       }
-
-      offset += valueLen;
+      i++;
     }
     return result;
   }
