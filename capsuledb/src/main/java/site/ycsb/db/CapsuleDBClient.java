@@ -86,7 +86,7 @@ public class CapsuleDBClient extends DB {
     for (int i = 0; i < valuesList.size(); i++) {
       sbuilder.setLength(0);
       // Read key
-      while(((char) valuesList.get(i).byteValue()) != CapsuleDBClient.FIELD_DELIM && i < valuesList.size()) {
+      while(i < valuesList.size() && ((char) valuesList.get(i).byteValue()) != CapsuleDBClient.FIELD_DELIM) {
         sbuilder.append(valuesList.get(i));
         i++;
       }
@@ -94,7 +94,7 @@ public class CapsuleDBClient extends DB {
       sbuilder.setLength(0);
       // Read value
       i++; // Last index was |
-      while (((char) valuesList.get(i).byteValue()) != CapsuleDBClient.FIELD_DELIM && i < valuesList.size()) {
+      while (i < valuesList.size() && ((char) valuesList.get(i).byteValue()) != CapsuleDBClient.FIELD_DELIM) {
         sbuilder.append(valuesList.get(i));
         i++;
       }
