@@ -38,6 +38,7 @@ public class CapsuleDBClient extends DB {
   @Override
   public void init() throws DBException {
     synchronized (CapsuleDBClient.class) {
+      references++;
       if (capsuledb != null) {
         return;
       }
@@ -49,7 +50,6 @@ public class CapsuleDBClient extends DB {
         e.printStackTrace();
         System.exit(-1);
       }
-      references++;
     }
   }
 
